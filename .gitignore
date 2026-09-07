@@ -1,0 +1,22 @@
+# Arduino
+*.hex
+*.elf
+build/
+.pio/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+env/
+*.db
+*.sqlite3
+
+# Secrets
+backend/config_secret.py
+.env
+
+# OS
+.DS_Store
+Thumbs.db
