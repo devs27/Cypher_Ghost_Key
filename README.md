@@ -86,43 +86,60 @@ graph TB
 
 ---
 
-## 🔌 Hardware Pinout & Edge Node Configurations
+## 🔌 Hardware Wiring & Edge Node Pinouts
 
-Both physical checkpoints are powered by **Espressif ESP32** dual-core microcontrollers programmed in C++ using the Arduino framework with hardware cryptographic accelerators (`mbedtls`).
+Both physical checkpoints are powered by **Espressif ESP32 DevKit V1** microcontrollers programmed in C++ using the Arduino framework with hardware cryptographic accelerators (`mbedtls`).
 
-### Hardware Component Matrix
+> [!IMPORTANT]
+> **Power Supply & Ground Isolation Architecture:**
+> Both ESP32 boards receive power from **independent USB supplies / power banks**. Do **not** attempt to share one power rail across both ESP32 microcontrollers, as doing so introduces ground-loop noise that degrades 13.56 MHz RFID inductive coupling reads.
 
-| Component | Node A (Main Gate) | Node B (Server Room) | Purpose / Role |
-| :--- | :---: | :---: | :--- |
-| **ESP32 DevKit V1** | Yes | Yes | Edge compute, Wi-Fi stack, cryptographic packet signing (`mbedtls`) |
-| **RC522 RFID Reader** | Yes (SPI) | Yes (SPI) | High-frequency 13.56 MHz RFID/NFC tag UID detection |
-| **SSD1306 0.96" OLED** | Yes (I2C) | Yes (I2C) | Real-time status display, user prompt, and security alerts |
-| **DS3231 RTC Module** | No (NTP) | Yes (I2C) | Tamper-resistant hardware real-time clock for packet freshness |
-| **SG90 Micro Servo** | No | Yes (GPIO 13) | Physical door locking mechanism (0° Locked, 90° Unlocked) |
-| **Active Piezo Buzzer**| No | Yes (GPIO 27) | Auditory alert cues (Success beeps, Warning chirps, Alarm tones) |
-| **Green / Red LEDs** | Yes (32 / 33) | Yes (32 / 33) | Visual pass/fail status indicators |
+---
 
-### Pin Configuration Table
+### Node A — Main Gate Checkpoint (ESP32 #1)
+Node A serves as the perimeter entry/exit checkpoint with an RFID reader, status OLED display, and dual visual indicator LEDs.
 
-```text
-=====================================================================================
-ESP32 PIN       NODE A (MAIN GATE) FUNCTION       NODE B (SERVER ROOM) FUNCTION
-=====================================================================================
-GPIO 5          RFID SS / SDA (SPI CS)            RFID SS / SDA (SPI CS)
-GPIO 4          RFID RST (Reset)                  RFID RST (Reset)
-GPIO 18         RFID SCK (SPI Clock)              RFID SCK (SPI Clock)
-GPIO 19         RFID MISO                         RFID MISO
-GPIO 23         RFID MOSI                         RFID MOSI
-GPIO 21         OLED SDA (I2C Data)               OLED SDA & DS3231 RTC SDA (I2C Data)
-GPIO 22         OLED SCL (I2C Clock)              OLED SCL & DS3231 RTC SCL (I2C Clock)
-GPIO 13         —                                 Servo PWM Signal Pin
-GPIO 27         —                                 Active Buzzer VCC
-GPIO 32         Green LED Anode                   Green LED Anode
-GPIO 33         Red LED Anode                     Red LED Anode
-3V3 / VIN       Power Supply (3.3V / 5V)          Power Supply (3.3V / 5V)
-GND             Common Ground                     Common Ground
-=====================================================================================
-```
+| Component | Pin on Part | ESP32 GPIO / Rail | Notes |
+| :--- | :--- | :--- | :--- |
+| **MFRC522 RFID** | `SDA (SS)` | **GPIO 5** | SPI Chip Select (CS) |
+| **MFRC522 RFID** | `SCK` | **GPIO 18** | SPI Bus Clock |
+| **MFRC522 RFID** | `MOSI` | **GPIO 23** | SPI Master-Out-Slave-In |
+| **MFRC522 RFID** | `MISO` | **GPIO 19** | SPI Master-In-Slave-Out |
+| **MFRC522 RFID** | `RST` | **GPIO 4** | Hard Reset Pin |
+| **MFRC522 RFID** | `3.3V` / `GND` | **3.3V** / **GND** | 3.3V Logic & Power (Do not connect to 5V) |
+| **SSD1306 OLED (0.96")** | `SDA` | **GPIO 21** | I2C Data Line (Address `0x3C`) |
+| **SSD1306 OLED (0.96")** | `SCL` | **GPIO 22** | I2C Clock Line |
+| **SSD1306 OLED (0.96")** | `VCC` / `GND` | **3.3V** / **GND** | Power rail |
+| **Green LED** | `Anode (+)` | **GPIO 32** | Via current-limiting 220Ω resistor (Cathode to GND) |
+| **Red LED** | `Anode (+)` | **GPIO 33** | Via current-limiting 220Ω resistor (Cathode to GND) |
+
+---
+
+### Node B — Server Room Vault (ESP32 #2)
+Node B functions as the high-security vault door. It features a hardware DS3231 RTC clock, audio-visual feedback, and an **SG90 Micro Servo Motor** acting as the direct physical locking actuator (0° Locked, 90° Unlocked).
+
+> [!NOTE]
+> **Actuator Design Decision (Servo vs Solenoid / Relay):**
+> In Node B, an **SG90 Servo Motor** is utilized directly as the fail-secure physical locking actuator (driven via ESP32 PWM on **GPIO 13**). Neither a solenoid lock nor an external relay module is used in this deployment, providing silent, precise angular positioning and eliminating inductive relay switching transients.
+
+| Component | Pin on Part | ESP32 GPIO / Rail | Notes |
+| :--- | :--- | :--- | :--- |
+| **MFRC522 RFID** | `SDA (SS)` | **GPIO 5** | SPI Chip Select (CS) |
+| **MFRC522 RFID** | `SCK` | **GPIO 18** | SPI Bus Clock |
+| **MFRC522 RFID** | `MOSI` | **GPIO 23** | SPI Master-Out-Slave-In |
+| **MFRC522 RFID** | `MISO` | **GPIO 19** | SPI Master-In-Slave-Out |
+| **MFRC522 RFID** | `RST` | **GPIO 4** | Hard Reset Pin |
+| **MFRC522 RFID** | `3.3V` / `GND` | **3.3V** / **GND** | 3.3V Logic & Power |
+| **SSD1306 OLED (0.96")** | `SDA` / `SCL` | **GPIO 21** / **GPIO 22** | Shared I2C Bus (Address `0x3C`) |
+| **SSD1306 OLED (0.96")** | `VCC` / `GND` | **3.3V** / **GND** | Power rail |
+| **DS3231 Hardware RTC** | `SDA` / `SCL` | **GPIO 21** / **GPIO 22** | Shared I2C Bus (Address `0x68`) |
+| **DS3231 Hardware RTC** | `VCC` / `GND` | **3.3V** / **GND** | Battery-backed hardware timekeeper |
+| **SG90 Micro Servo** | `PWM Signal (Orange)` | **GPIO 13** | Direct PWM Actuator (0° Locked, 90° Unlocked) |
+| **SG90 Micro Servo** | `VCC (Red)` / `GND (Brown)` | **5V (VIN)** / **GND** | Powered via 5V rail (Common GND) |
+| **Active Piezo Buzzer** | `Signal (+)` | **GPIO 27** | Audible grant/deny/timeout alerts (Negative to GND) |
+| **Green LED** | `Anode (+)` | **GPIO 32** | Via current-limiting 220Ω resistor (Cathode to GND) |
+| **Red LED** | `Anode (+)` | **GPIO 33** | Via current-limiting 220Ω resistor (Cathode to GND) |
+
 
 ---
 
